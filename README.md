@@ -1,4 +1,4 @@
-# Reviving DSP for Advanced Theorem Proving in the Era of Reasoning Models
+# dsp+ modify
 
 <p align="center">
   <b> Microsoft Research </b></a>
