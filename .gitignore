@@ -1,6 +1,12 @@
 # DSP+ result
 result/*
 
+# Local experiment secrets
+/.env
+
+# Local vLLM model weights/checkpoints
+vllm/models/
+
 /notes/
 
 # Byte-compiled / optimized / DLL files

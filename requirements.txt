@@ -8,3 +8,7 @@ openai==1.78.1
 uvicorn==0.34.2
 fastapi==0.115.12
 loguru==0.7.3
+
+# Version 1 local BFS-Prover server dependency.
+# Install this on the Linux lab machine, preferably in a separate vLLM environment.
+vllm
