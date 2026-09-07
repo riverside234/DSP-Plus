@@ -1,0 +1,7 @@
+# Local BFS-Prover server dependencies.
+# Keep these in a separate environment from the DSP+ Lean/OpenAI runtime.
+#
+# vLLM 0.9.x fails at import time with Transformers >= 4.54.0 because both
+# libraries try to register the aimv2 config name. Keep this pair together.
+vllm==0.9.2
+transformers>=4.51.0,<4.54.0

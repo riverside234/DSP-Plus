@@ -9,6 +9,5 @@ uvicorn==0.34.2
 fastapi==0.115.12
 loguru==0.7.3
 
-# Version 1 local BFS-Prover server dependency.
-# Install this on the Linux lab machine, preferably in a separate vLLM environment.
-vllm
+# Install local BFS-Prover/vLLM server dependencies from vllm/requirements.txt
+# in a separate conda environment.
