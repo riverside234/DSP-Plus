@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import runpy
+import shutil
 import sys
 import urllib.request
 from pathlib import Path
@@ -12,6 +13,9 @@ from src.dataset_utils import ensure_dataset_exists
 from src.env import load_project_env
 from src.jsonl_io import resolve_project_path
 from src.paths import DSP_WORKFLOW, MATHLIB_DIR, PROJECT_ROOT, TEST_VERSION1_CONFIG, VLLM_BASE_URL
+
+
+ELAN_LAKE_PATH = Path.home() / ".elan" / "bin" / "lake"
 
 
 def install_version1_generator() -> None:
@@ -32,6 +36,33 @@ def check_bfs_server(base_url: str = VLLM_BASE_URL, timeout: float = 5.0) -> Non
     with urllib.request.urlopen(models_url, timeout=timeout) as response:
         if response.status >= 400:
             raise RuntimeError(f"BFS-Prover server returned HTTP {response.status}: {models_url}")
+
+
+def resolve_lake_path() -> str | None:
+    """Resolve the lake executable used by DSP+'s Lean verifier."""
+    configured = os.environ.get("DSP_LAKE_PATH")
+    if configured:
+        return configured
+    path_lake = shutil.which("lake")
+    if path_lake:
+        return path_lake
+    if ELAN_LAKE_PATH.exists():
+        return os.fspath(ELAN_LAKE_PATH)
+    return None
+
+
+def check_lean_toolchain() -> list[str]:
+    """Return actionable errors for missing Lean/lake tools."""
+    errors: list[str] = []
+    lake_path = resolve_lake_path()
+    if lake_path is None:
+        errors.append(
+            "lake is not available. Add it to PATH or set DSP_LAKE_PATH to the lake executable "
+            "used to build mathlib4."
+        )
+    elif not os.access(lake_path, os.X_OK):
+        errors.append(f"lake exists but is not executable: {lake_path}")
+    return errors
 
 
 def load_config(config_path: str | os.PathLike[str]):
@@ -61,6 +92,7 @@ def preflight(config_path: str | os.PathLike[str] = TEST_VERSION1_CONFIG, check_
         errors.append(f"Config file does not exist: {config_file}")
     if not os.environ.get("OPENAI_API_KEY"):
         errors.append(f"OPENAI_API_KEY is not set; add it to {env_file or PROJECT_ROOT / '.env'}")
+    errors.extend(check_lean_toolchain())
 
     cfg = None
     if not errors:
@@ -93,6 +125,9 @@ def run_dsp_workflow(
 ) -> None:
     """Run dsp_workflow.py in-process after installing version 1 LLM scheduling."""
     load_project_env()
+    lake_path = resolve_lake_path()
+    if lake_path is not None:
+        os.environ.setdefault("DSP_LAKE_PATH", lake_path)
     install_version1_generator()
 
     old_cwd = Path.cwd()
