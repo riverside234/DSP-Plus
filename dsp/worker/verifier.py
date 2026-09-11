@@ -17,7 +17,6 @@ import resource
 import warnings
 import traceback
 import subprocess
-import shutil
 import multiprocessing as mp
 from pprint import pprint
 from typing import Union
@@ -27,7 +26,7 @@ from .scheduler import ProcessScheduler
 
 
 HOME_DIR = os.path.expanduser('~')
-DEFAULT_LAKE_PATH = os.environ.get('DSP_LAKE_PATH') or shutil.which('lake') or f'{HOME_DIR}/.elan/bin/lake'
+DEFAULT_LAKE_PATH = f'{HOME_DIR}/.elan/bin/lake'
 DEFAULT_LEAN_WORKSPACE = 'mathlib4/'
 RETRIES = 2
 DEFAULT_HEADER = "import Mathlib\nimport Aesop\n\nset_option maxHeartbeats 0\n\nopen BigOperators Real Nat Topology Rat"

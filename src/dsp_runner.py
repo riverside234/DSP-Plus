@@ -15,7 +15,8 @@ from src.jsonl_io import resolve_project_path
 from src.paths import DSP_WORKFLOW, MATHLIB_DIR, PROJECT_ROOT, TEST_VERSION1_CONFIG, VLLM_BASE_URL
 
 
-ELAN_LAKE_PATH = Path.home() / ".elan" / "bin" / "lake"
+ELAN_BIN_DIR = Path.home() / ".elan" / "bin"
+LAKE_PATH = ELAN_BIN_DIR / "lake"
 
 
 def install_version1_generator() -> None:
@@ -38,30 +39,20 @@ def check_bfs_server(base_url: str = VLLM_BASE_URL, timeout: float = 5.0) -> Non
             raise RuntimeError(f"BFS-Prover server returned HTTP {response.status}: {models_url}")
 
 
-def resolve_lake_path() -> str | None:
-    """Resolve the lake executable used by DSP+'s Lean verifier."""
-    configured = os.environ.get("DSP_LAKE_PATH")
-    if configured:
-        return configured
-    path_lake = shutil.which("lake")
-    if path_lake:
-        return path_lake
-    if ELAN_LAKE_PATH.exists():
-        return os.fspath(ELAN_LAKE_PATH)
-    return None
-
-
 def check_lean_toolchain() -> list[str]:
-    """Return actionable errors for missing Lean/lake tools."""
+    """Return actionable errors for missing Lean/Elan tools."""
     errors: list[str] = []
-    lake_path = resolve_lake_path()
-    if lake_path is None:
+    if shutil.which("elan") is None:
         errors.append(
-            "lake is not available. Add it to PATH or set DSP_LAKE_PATH to the lake executable "
-            "used to build mathlib4."
+            "elan is not on PATH. Install Lean/Elan or add ~/.elan/bin to PATH: "
+            'export PATH="$HOME/.elan/bin:$PATH"'
         )
-    elif not os.access(lake_path, os.X_OK):
-        errors.append(f"lake exists but is not executable: {lake_path}")
+    if not LAKE_PATH.exists():
+        errors.append(
+            f"lake was not found at {LAKE_PATH}. DSP+'s verifier starts Lean with this path."
+        )
+    elif not os.access(LAKE_PATH, os.X_OK):
+        errors.append(f"lake exists but is not executable: {LAKE_PATH}")
     return errors
 
 
@@ -125,9 +116,6 @@ def run_dsp_workflow(
 ) -> None:
     """Run dsp_workflow.py in-process after installing version 1 LLM scheduling."""
     load_project_env()
-    lake_path = resolve_lake_path()
-    if lake_path is not None:
-        os.environ.setdefault("DSP_LAKE_PATH", lake_path)
     install_version1_generator()
 
     old_cwd = Path.cwd()
