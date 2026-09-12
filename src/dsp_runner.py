@@ -16,7 +16,40 @@ from src.paths import DSP_WORKFLOW, MATHLIB_DIR, PROJECT_ROOT, TEST_VERSION1_CON
 
 
 ELAN_BIN_DIR = Path.home() / ".elan" / "bin"
-LAKE_PATH = ELAN_BIN_DIR / "lake"
+
+
+def _is_executable(path: str | os.PathLike[str]) -> bool:
+    return os.path.exists(path) and os.access(path, os.X_OK)
+
+
+def _resolve_tool(tool_name: str, env_name: str) -> str | None:
+    configured = os.environ.get(env_name)
+    if configured:
+        return configured
+
+    configured_bin = os.environ.get("LEAN_TOOLCHAIN_BIN")
+    if configured_bin:
+        candidate = Path(configured_bin) / tool_name
+        if candidate.exists():
+            return os.fspath(candidate)
+
+    path_tool = shutil.which(tool_name)
+    if path_tool:
+        return path_tool
+
+    fallback = ELAN_BIN_DIR / tool_name
+    if fallback.exists():
+        return os.fspath(fallback)
+
+    return None
+
+
+def resolve_elan_path() -> str | None:
+    return _resolve_tool("elan", "DSP_ELAN_PATH")
+
+
+def resolve_lake_path() -> str | None:
+    return _resolve_tool("lake", "DSP_LAKE_PATH")
 
 
 def install_version1_generator() -> None:
@@ -42,17 +75,22 @@ def check_bfs_server(base_url: str = VLLM_BASE_URL, timeout: float = 5.0) -> Non
 def check_lean_toolchain() -> list[str]:
     """Return actionable errors for missing Lean/Elan tools."""
     errors: list[str] = []
-    if shutil.which("elan") is None:
+    elan_path = resolve_elan_path()
+    lake_path = resolve_lake_path()
+
+    if elan_path is None:
         errors.append(
-            "elan is not on PATH. Install Lean/Elan or add ~/.elan/bin to PATH: "
-            'export PATH="$HOME/.elan/bin:$PATH"'
+            "elan was not found. Add it to PATH, set LEAN_TOOLCHAIN_BIN, or set DSP_ELAN_PATH."
         )
-    if not LAKE_PATH.exists():
+    elif not _is_executable(elan_path):
+        errors.append(f"elan exists but is not executable: {elan_path}")
+
+    if lake_path is None:
         errors.append(
-            f"lake was not found at {LAKE_PATH}. DSP+'s verifier starts Lean with this path."
+            "lake was not found. Add it to PATH, set LEAN_TOOLCHAIN_BIN, or set DSP_LAKE_PATH."
         )
-    elif not os.access(LAKE_PATH, os.X_OK):
-        errors.append(f"lake exists but is not executable: {LAKE_PATH}")
+    elif not _is_executable(lake_path):
+        errors.append(f"lake exists but is not executable: {lake_path}")
     return errors
 
 
@@ -116,6 +154,9 @@ def run_dsp_workflow(
 ) -> None:
     """Run dsp_workflow.py in-process after installing version 1 LLM scheduling."""
     load_project_env()
+    lake_path = resolve_lake_path()
+    if lake_path is not None:
+        os.environ.setdefault("DSP_LAKE_PATH", lake_path)
     install_version1_generator()
 
     old_cwd = Path.cwd()
