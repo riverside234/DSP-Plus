@@ -12,6 +12,7 @@ from .worker import Lean4ServerScheduler, LLMServerScheduler
 class Sketch:
     llm_scheduler = None
     lean4_scheduler = None
+    max_error_masking_rounds = 20
 
     @classmethod
     def launch_llmserver(cls, client_config: List[dict], max_llm_requests: int=128, name: str='Sketch', **kwargs):
@@ -28,7 +29,8 @@ class Sketch:
             cls.llm_scheduler.close()
     
     @classmethod
-    def launch_lean4server(cls, max_lean4_requests: int=1, verify_timeout: int=180, startup_timeout: int=None, cwd: str='./mathlib4', name: str='sketch_verifier'):
+    def launch_lean4server(cls, max_lean4_requests: int=1, verify_timeout: int=180, startup_timeout: int=None, max_error_masking_rounds: int=20, cwd: str='./mathlib4', name: str='sketch_verifier'):
+        cls.max_error_masking_rounds = max_error_masking_rounds
         command = '''import Mathlib
 import Aesop
 set_option maxHeartbeats 0
@@ -170,6 +172,14 @@ macro_rules
         count = 0
         
         while True:
+            if count >= self.max_error_masking_rounds:
+                print(
+                    f"Sketch error masking reached max_error_masking_rounds={self.max_error_masking_rounds}; "
+                    "continuing with the current masked sketch.",
+                    flush=True,
+                )
+                break
+
             # Run REPL to get error line and output
             error_line, repl_output = get_error_line('\n'.join(formal_proof_sorry))
             tree = parse_lean_code(formal_proof_sorry)
@@ -196,44 +206,71 @@ macro_rules
             formal_proof_sorry.append('  sorry')
             
         return '\n'.join(formal_proof_sorry)
+
+    def prepare_header(self, header: str) -> str:
+        """Prepare dataset headers as assumptions available to the target theorem."""
+
+        def axiomize_sorry_decl(match: re.Match) -> str:
+            declaration = match.group(2).rstrip()
+            return f"axiom {declaration}\n"
+
+        return re.sub(
+            r'(?ms)^\s*(theorem|lemma)\s+(.+?)\s*:=\s*by\s+sorry\s*',
+            axiomize_sorry_decl,
+            header.strip(),
+        )
+
+    def compose_sketch(self, data: dict, target_sketch: str) -> str:
+        """Combine the sanitized Lean context with the target theorem sketch."""
+        header = self.prepare_header(data.get('header', ''))
+        if not header:
+            return target_sketch.strip()
+        return f"{header}\n\n{target_sketch.strip()}"
         
     def llm_generator(self, data: dict, draft: str) -> str:
         """get raw output from llm"""
         # get what you need
         formal_statement = data['formal_statement']
-        header = data['header']
+        header = self.prepare_header(data['header'])
+        informal_statement = data.get('informal_statement', '')
+        informal_prefix = data.get('informal_prefix', '')
         
         # get llm prompt
-        prompt = f'''informal_proof:
+        prompt = f'''You are generating the DSP+ Sketch stage for one Lean 4 theorem.
+
+The input Draft may come from an Isabelle proof, so it may describe mathematical ideas rather than Lean-specific names. Use it only as proof guidance.
+
+You must write Lean code for the TARGET THEOREM only. Do not repeat the Lean header, imports, classes, definitions, axioms, namespace commands, or prior theorem declarations in your output. The verifier will prepend the Lean header automatically.
+
+Use only names and notation available in the Lean header below. In particular:
+- Preserve the exact target theorem statement.
+- Prefer the definitions, axioms, and prior facts named in the header.
+- Do not invent Mathlib lemmas, algebraic structures, notation, or theorem names that do not appear in the header.
+- If the header defines operations explicitly, use those names explicitly. For example, use `AddMonoid.add` instead of unprovided `+` notation.
+- If the proof needs an intermediate claim, introduce it with `have`.
+- For any subclaim that should be solved later, use `by` followed by `prove_with[...]`.
+- Output exactly one Lean code block containing only the target theorem and its sketch proof.
+
+informal_prefix:
+{informal_prefix}
+
+informal_statement:
+{informal_statement}
+
+informal_proof:
 {draft}
 
-Prove the theorem in Lean 4 code. You should translate steps in the informal proof in a series of 'have'/'let'/'induction'/'match'/'suffices' statements, but you do not need to prove them. You only need to use placeholder `by{{new_line}}prove_with[h1, step5, ...{{hypothesises used here which are proposed ahead}}]`. We want to have as many lemmas as possible, and every lemma must be easy to proof.
-
-When using a / b, you must specify **a's or b's type**, because (1:ℝ) / 2 is 0.5, but (1:ℤ) / 2 is 0.
-When using a - b, you must specify **a's or b's type**, because (1:ℤ) - 2 is -1, but (1:ℕ) - 2 is 0.
-n! is incorrect, you should use (n)!.
-
-Here is an example:
-```lean4
-import Mathlib
-
-example (x y : ℝ) (h1 : x ≤ 1 / 2) (h2 : x > 0) (t: y < Real.sin (x)): y < 1 / 2 := by
-  -- Step 1
-  have h3 : y < (1:ℝ) / 2 := by
-    -- Step 2
-    have h4 : Real.sin x ≤ x := by
-      prove_with[h2]
-    -- Step 3
-    have h5 : y < x := by
-      prove_with[h4, t]
-    prove_with[h1, h5]
-  exact h3
-```
-
-formal_statement:
+Lean header available before the target theorem:
 ```lean4
 {header}
+```
+
+Target theorem statement:
+```lean4
 {formal_statement}
+```
+
+Remember: output only the target theorem, not the header.
 '''
     
         # get llm output
@@ -286,7 +323,7 @@ formal_statement:
                 print(f"   {data['name']} - {idx} sketching...", flush=True)
                 raw_sketch = self.llm_generator(data, draft)
                 extract_sketch = self.extract_sketch(raw_sketch)
-                sketch = self.error_masking(extract_sketch)
+                sketch = self.error_masking(self.compose_sketch(data, extract_sketch))
                 self.save_sketch(res_dir, idx, raw_sketch, sketch)
                 print(f"Done Sketch {data['name']} - {idx}", flush=True)
                 
@@ -295,6 +332,6 @@ formal_statement:
         print(f"   {data['name']} sketching...", flush=True)
         raw_sketch = self.llm_generator(data, draft)
         extract_sketch = self.extract_sketch(raw_sketch)
-        sketch = self.error_masking(extract_sketch)
+        sketch = self.error_masking(self.compose_sketch(data, extract_sketch))
         print(f"Done Sketch {data['name']}", flush=True)
         return sketch

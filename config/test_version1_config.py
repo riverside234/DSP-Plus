@@ -55,6 +55,7 @@ sketch_sample_config = {
 sketch_verify_config = {
     "verify_timeout": 1200,
     "startup_timeout": 1200,
+    "max_error_masking_rounds": 20,
     "cwd": str(MATHLIB_DIR),
 }
 
