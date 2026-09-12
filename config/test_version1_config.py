@@ -53,7 +53,8 @@ sketch_sample_config = {
 }
 
 sketch_verify_config = {
-    "verify_timeout": 180,
+    "verify_timeout": 1200,
+    "startup_timeout": 1200,
     "cwd": str(MATHLIB_DIR),
 }
 
@@ -78,9 +79,9 @@ prove_sampling_config = {
 
 prove_verify_config = {
     "verify_timeout": 1200,
+    "startup_timeout": 1200,
     "max_tree_size": 64,
     "search_attempts": 4,
     "port_lean_copilot": 23338,
     "cwd": str(MATHLIB_DIR),
 }
-

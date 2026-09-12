@@ -135,6 +135,7 @@ class Lean4ServerProcess(mp.Process):
         self.extra_args = extra_args
 
         self.timeout = extra_args.get('timeout', 300)
+        self.startup_timeout = extra_args.get('startup_timeout', self.timeout)
         self.memory_limit = extra_args.get('memory_limit', -1)
         self.last_output_time = mp.Value(ctypes.c_double, time.time())
         self.complete_count = mp.Value(ctypes.c_int, 0)
@@ -145,7 +146,7 @@ class Lean4ServerProcess(mp.Process):
     def start_lean4_server(self):
         self.start_time = time.time()
         self.proc = pexpect.spawn(
-            f"{DEFAULT_LAKE_PATH} exe repl", cwd=self.cwd, encoding="utf-8", timeout=self.timeout
+            f"{DEFAULT_LAKE_PATH} exe repl", cwd=self.cwd, encoding="utf-8", timeout=self.startup_timeout
         )
         output = self.proc.before
         if self.command:
@@ -155,6 +156,7 @@ class Lean4ServerProcess(mp.Process):
             self.proc.expect_exact("\r\n")
             self.proc.expect_exact("\r\n\r\n")
             output = self.proc.before
+        self.proc.timeout = self.timeout
         return output
     
     def run(self):
@@ -230,18 +232,20 @@ class Lean4ServerProcess(mp.Process):
             
         except Exception as e:
             if isinstance(e, pexpect.exceptions.EOF):
-                print(f"LeanProcess {self.idx} Lean4Server failed to start, please check the status of mathlib4 and REPL")
+                print(f"LeanProcess {self.idx} Lean4Server failed to start, please check the status of mathlib4 and REPL. cwd={self.cwd} lake={DEFAULT_LAKE_PATH}")
             elif isinstance(e, pexpect.exceptions.TIMEOUT):
-                print(f"LeanProcess {self.idx} Lean4Server startup timeout")
+                print(f"LeanProcess {self.idx} Lean4Server startup timeout after {self.startup_timeout}s. cwd={self.cwd} lake={DEFAULT_LAKE_PATH}")
             else:
-                print(f"LeanProcess {self.idx} Lean4Server encountered an exception: {e}")
+                print(f"LeanProcess {self.idx} Lean4Server encountered an exception: {e}. cwd={self.cwd} lake={DEFAULT_LAKE_PATH}")
 
-            self.proc.kill(signal.SIGKILL)
-            self.proc.close()
+            proc = getattr(self, 'proc', None)
+            if proc is not None:
+                proc.kill(signal.SIGKILL)
+                proc.close()
 
 
 class Lean4ServerScheduler(ProcessScheduler):
-    def __init__(self, max_concurrent_requests=64, timeout=300, memory_limit=-1, name='verifier', command=DEFAULT_COMMAND, share_header=DEFAULT_HEADER, cwd=DEFAULT_LEAN_WORKSPACE):
+    def __init__(self, max_concurrent_requests=64, timeout=300, startup_timeout=None, memory_limit=-1, name='verifier', command=DEFAULT_COMMAND, share_header=DEFAULT_HEADER, cwd=DEFAULT_LEAN_WORKSPACE):
         super().__init__(batch_size=1, name=name)
         
         self.processes = [
@@ -252,6 +256,7 @@ class Lean4ServerScheduler(ProcessScheduler):
                 lock=self.lock,
                 extra_args=AttrDict(
                     timeout=timeout,
+                    startup_timeout=startup_timeout if startup_timeout is not None else timeout,
                     memory_limit=memory_limit,
                 ),
                 command=command,

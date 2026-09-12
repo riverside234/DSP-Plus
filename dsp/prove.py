@@ -19,7 +19,7 @@ class Prove:
             cls.lean4_scheduler.close()
     
     @classmethod
-    def launch_lean4server(cls, max_lean4_requests: int=1, verify_timeout: int=1200, max_tree_size: int=64, search_attempts: int=4, port_lean_copilot: int=23337, name_lean_copilot: str="BFS-Prover-API", cwd: str='./mathlib4', name: str='prove_verifier'):
+    def launch_lean4server(cls, max_lean4_requests: int=1, verify_timeout: int=1200, startup_timeout: int=None, max_tree_size: int=64, search_attempts: int=4, port_lean_copilot: int=23337, name_lean_copilot: str="BFS-Prover-API", cwd: str='./mathlib4', name: str='prove_verifier'):
         command = f'''import Mathlib
 import LeanCopilot
 import Aesop
@@ -65,6 +65,7 @@ elab "bfsaesopLoop" : tactic =>
 '''
         cls.lean4_scheduler = Lean4ServerScheduler(max_concurrent_requests = max_lean4_requests, 
                                                    timeout = verify_timeout, 
+                                                   startup_timeout = startup_timeout,
                                                    memory_limit = 10, 
                                                    name = name, 
                                                    cwd = cwd, 

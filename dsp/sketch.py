@@ -28,7 +28,7 @@ class Sketch:
             cls.llm_scheduler.close()
     
     @classmethod
-    def launch_lean4server(cls, max_lean4_requests: int=1, verify_timeout: int=180, cwd: str='./mathlib4', name: str='sketch_verifier'):
+    def launch_lean4server(cls, max_lean4_requests: int=1, verify_timeout: int=180, startup_timeout: int=None, cwd: str='./mathlib4', name: str='sketch_verifier'):
         command = '''import Mathlib
 import Aesop
 set_option maxHeartbeats 0
@@ -40,6 +40,7 @@ macro_rules
         cls.lean4_scheduler = Lean4ServerScheduler(
             max_concurrent_requests = max_lean4_requests, 
             timeout = verify_timeout, 
+            startup_timeout = startup_timeout,
             memory_limit = 10,
             name = name,
             cwd = cwd, 
