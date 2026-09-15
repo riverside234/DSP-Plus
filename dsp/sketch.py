@@ -234,21 +234,34 @@ macro_rules
         header = self.prepare_header(data['header'])
         informal_statement = data.get('informal_statement', '')
         informal_prefix = data.get('informal_prefix', '')
+        dataset_draft = data.get('informal_proof', '')
+        if isinstance(dataset_draft, str) and dataset_draft.strip():
+            proof_draft = dataset_draft.strip()
+            draft_source = 'pre-generated dataset informal_proof'
+        else:
+            proof_draft = draft.strip()
+            draft_source = 'DSP+ Draft stage output'
         
         # get llm prompt
         prompt = f'''You are generating the DSP+ Sketch stage for one Lean 4 theorem.
 
-The input Draft may come from an Isabelle proof, so it may describe mathematical ideas rather than Lean-specific names. Use it only as proof guidance.
+The proof Draft below is a sequence of Markdown proof steps derived from an Isabelle proof. It should express formulas in Lean-like notation using target-side names from a proof-masked Lean 4 context. Treat it as a proof plan, not as executable Lean code. Ignore Markdown headings and inline backticks when translating it.
 
 You must write Lean code for the TARGET THEOREM only. Do not repeat the Lean header, imports, classes, definitions, axioms, namespace commands, or prior theorem declarations in your output. The verifier will prepend the Lean header automatically.
 
 Use only names and notation available in the Lean header below. In particular:
 - Preserve the exact target theorem statement.
+- Follow the Draft's proof strategy and step order, while combining steps when the header justifies a shorter direct Lean proof.
 - Prefer the definitions, axioms, and prior facts named in the header.
 - Do not invent Mathlib lemmas, algebraic structures, notation, or theorem names that do not appear in the header.
+- Check every Draft identifier and formula against the header even when it already looks like Lean.
 - If the header defines operations explicitly, use those names explicitly. For example, use `AddMonoid.add` instead of unprovided `+` notation.
+- For a legacy Draft, translate source-side aliases and notation into exact header names. A name such as `foo_def` may mean "unfold `foo`", and a symbol such as `+C` may mean `AddMonoid.add`; never emit either form unless it actually appears in the header.
+- Match each cited Draft fact to an available declaration by its statement as well as its approximate name. If the Draft says to apply `integral_shift` and that axiom is present, use the header's exact declaration and argument order.
+- Prefer the shortest direct Lean proof justified by the Draft and header. For example, a Draft that says to unfold `circleAverage` and `circleMap`, obtains `integral (fun theta => f (AddMonoid.add theta c)) = integral f`, and applies `integral_shift f c` should become `unfold circleAverage circleMap` followed by `exact integral_shift f c`.
 - If the proof needs an intermediate claim, introduce it with `have`.
 - For any subclaim that should be solved later, use `by` followed by `prove_with[...]`.
+- Do not copy Markdown headings, prose, or inline backticks into the Lean proof.
 - Output exactly one Lean code block containing only the target theorem and its sketch proof.
 
 informal_prefix:
@@ -257,8 +270,8 @@ informal_prefix:
 informal_statement:
 {informal_statement}
 
-informal_proof:
-{draft}
+proof_draft ({draft_source}):
+{proof_draft}
 
 Lean header available before the target theorem:
 ```lean4
