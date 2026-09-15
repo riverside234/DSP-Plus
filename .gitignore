@@ -1,6 +1,3 @@
-# DSP+ result
-result/*
-
 # Local experiment secrets
 /.env
 
